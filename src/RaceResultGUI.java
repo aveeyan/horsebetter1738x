@@ -1,0 +1,242 @@
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+
+public class RaceResultGUI {
+
+    private JFrame frame;
+    private JLabel resultLabel;
+    private JLabel winningHorseLabel;
+    private JLabel earningsLabel;
+    private JButton startButton;
+    private HorseBettingGUI mainGUI;
+    private JPanel racePanel;
+    private static final int RACE_DURATION = 12000; // 10 seconds
+    private static final int FRAME_WIDTH = 1152;
+    private static final int FRAME_HEIGHT = 768;
+    private JLabel[] horseLabels;
+    private int[] horseFinishTimes;
+    private boolean[] horseFinished;
+
+    public RaceResultGUI(HorseBettingGUI mainGUI) {
+        if (mainGUI == null) {
+            throw new IllegalArgumentException("MainGUI cannot be null");
+        }
+        this.mainGUI = mainGUI;
+
+        // Create and set up the frame
+        frame = new JFrame("Race Result");
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setSize(FRAME_WIDTH, FRAME_HEIGHT);
+        frame.setLayout(new BorderLayout());
+
+        // Create and add the result panel with GridBagLayout for better alignment
+        JPanel resultPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(10, 10, 10, 10);
+
+        resultLabel = new JLabel("", JLabel.CENTER);
+        resultLabel.setFont(new Font("Arial", Font.BOLD, 24));
+        resultPanel.add(resultLabel, gbc);
+
+        gbc.gridy++;
+        winningHorseLabel = new JLabel("", JLabel.CENTER);
+        winningHorseLabel.setFont(new Font("Arial", Font.PLAIN, 18));
+        resultPanel.add(winningHorseLabel, gbc);
+
+        gbc.gridy++;
+        earningsLabel = new JLabel("Earnings: $0", JLabel.CENTER);
+        earningsLabel.setFont(new Font("Arial", Font.PLAIN, 18));
+        resultPanel.add(earningsLabel, gbc);
+
+        frame.add(resultPanel, BorderLayout.NORTH);
+
+        // Create and add the race panel for displaying horse PNGs
+        racePanel = new JPanel(null);
+        racePanel.setPreferredSize(new Dimension(FRAME_WIDTH, FRAME_HEIGHT - 200));
+        frame.add(new JScrollPane(racePanel), BorderLayout.CENTER);
+
+        // Create and add the start another race button with FlowLayout for better positioning
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        startButton = new JButton("Start Another Race");
+        startButton.setFont(new Font("Arial", Font.BOLD, 18));
+        startButton.setBackground(Color.RED);
+        startButton.setForeground(Color.WHITE);
+        startButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                frame.dispose();
+                mainGUI.resetState();
+            }
+        });
+        buttonPanel.add(startButton);
+
+        frame.add(buttonPanel, BorderLayout.SOUTH);
+
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+    public void updateResult(String winningHorse, int earnings, List<Horse> horses) {
+        // Clear previous race
+        racePanel.removeAll();
+    
+        // Create labels for horses and add them to the race panel
+        horseLabels = new JLabel[horses.size()];
+        horseFinishTimes = new int[horses.size()];
+        horseFinished = new boolean[horses.size()];
+    
+        int topPadding = 20; // Adjust the top padding as needed
+        int paddingBetweenHorses = 10; // Adjust the padding between horses as needed
+    
+        for (int i = 0; i < horses.size(); i++) {
+            try {
+                String imagePath = horses.get(i).getPngPath();
+                ImageIcon originalIcon = new ImageIcon(imagePath);
+                Image originalImage = originalIcon.getImage();
+    
+                // Calculate the scaled width and height to fit within 100x60
+                int scaledWidth = originalImage.getWidth(null);
+                int scaledHeight = originalImage.getHeight(null);
+                if (scaledWidth > 100 || scaledHeight > 60) {
+                    double scaleFactor = Math.min(100.0 / scaledWidth, 60.0 / scaledHeight);
+                    scaledWidth = (int) (scaledWidth * scaleFactor);
+                    scaledHeight = (int) (scaledHeight * scaleFactor);
+                }
+    
+                // Scale the image to fit within 100x60
+                Image scaledImage = originalImage.getScaledInstance(scaledWidth, scaledHeight, Image.SCALE_SMOOTH);
+                ImageIcon scaledIcon = new ImageIcon(scaledImage);
+    
+                JLabel horseLabel = new JLabel(scaledIcon);
+                horseLabel.setText("<html><div style='text-align: center;'>" + horses.get(i).getHorseName() + "</div></html>"); // Center-align text
+                horseLabel.setHorizontalTextPosition(JLabel.CENTER);
+                horseLabel.setVerticalTextPosition(JLabel.CENTER);
+                horseLabel.setFont(new Font("Arial", Font.BOLD, 12));
+                horseLabel.setForeground(new Color(255, 255, 255));
+    
+                // Calculate the position with padding
+                int yPosition = i * (scaledHeight + paddingBetweenHorses) + topPadding;
+    
+                horseLabel.setBounds(0, yPosition, 100, scaledHeight + topPadding); // Adjusted size and position with padding
+                horseLabels[i] = horseLabel;
+                racePanel.add(horseLabel);
+            } catch (Exception e) {
+                System.err.println("Error loading image for horse " + horses.get(i).getHorseName() + ": " + e.getMessage());
+            }
+        }
+    
+        racePanel.revalidate();
+        racePanel.repaint();
+    
+        // Start the race simulation
+        new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                long startTime = System.currentTimeMillis();
+                int steps = RACE_DURATION / 100;
+                int maxX = FRAME_WIDTH - 100; // Ending position
+    
+                for (int step = 0; step < steps; step++) {
+                    Thread.sleep(100); // Simulate race step by step
+    
+                    // Update horse positions
+                    for (int i = 0; i < horses.size(); i++) {
+                        final int horseIndex = i;
+                        SwingUtilities.invokeLater(() -> {
+                            JLabel horseLabel = horseLabels[horseIndex];
+                            if (!horseFinished[horseIndex] && horseLabel.getX() < maxX - horseLabel.getWidth()) {
+                                int newX = Math.min(horseLabel.getX() + (int) (Math.random() * 20), maxX - horseLabel.getWidth());
+                                horseLabel.setLocation(newX, horseLabel.getY());
+                                if (newX >= maxX - horseLabel.getWidth()) {
+                                    horseFinished[horseIndex] = true;
+                                    horseFinishTimes[horseIndex] = (int) (System.currentTimeMillis() - startTime);
+                                }
+                            }
+                        });
+                    }
+    
+                    // Check if all horses have finished
+                    boolean allFinished = true;
+                    for (boolean finished : horseFinished) {
+                        if (!finished) {
+                            allFinished = false;
+                            break;
+                        }
+                    }
+                    if (allFinished) break;
+                }
+    
+                return null;
+            }
+    
+            @Override
+            protected void done() {
+                // After the race ends, update the result
+                try {
+                    get();
+    
+                    // Determine the winning horse based on the finish times
+                    int winningIndex = -1;
+                    int shortestTime = Integer.MAX_VALUE;
+                    for (int i = 0; i < horseFinishTimes.length; i++) {
+                        if (horseFinishTimes[i] < shortestTime) {
+                            shortestTime = horseFinishTimes[i];
+                            winningIndex = i;
+                        }
+                    }
+                    String winningHorse = horses.get(winningIndex).getHorseName();
+    
+                    String resultMessage;
+                    if (winningHorse.equals(mainGUI.getYourHorseName())) {
+                        resultMessage = "Congratulations! Your horse (" + mainGUI.getYourHorseName() + ") won the race!";
+                        startButton.setBackground(Color.GREEN);
+                    } else {
+                        resultMessage = "Unfortunately, your horse (" + mainGUI.getYourHorseName() + ") lost the race.";
+                        startButton.setBackground(Color.RED);
+                    }
+                    String winningHorseMessage = "Winning Horse: " + winningHorse;
+                    resultLabel.setText(resultMessage);
+                    winningHorseLabel.setText(winningHorseMessage);
+    
+                    String formattedEarnings;
+                    if (earnings > 0) {
+                        formattedEarnings = "+$" + earnings;
+                    } else {
+                        formattedEarnings = "-$" + Math.abs(earnings);
+                    }
+    
+                    earningsLabel.setText("Earnings: " + formattedEarnings);
+    
+                    // Display final positions of all horses
+                    StringBuilder positions = new StringBuilder("<html>Final Positions:<br>");
+                    for (int i = 0; i < horses.size(); i++) {
+                        positions.append((i + 1)).append(". ").append(horses.get(i).getHorseName())
+                                .append(" - ").append(horseFinishTimes[i]).append(" ms<br>");
+                    }
+                    positions.append("</html>");
+    
+                    JLabel positionsLabel = new JLabel(positions.toString(), JLabel.CENTER);
+                    positionsLabel.setFont(new Font("Arial", Font.PLAIN, 16));
+                    racePanel.add(positionsLabel);
+                    racePanel.revalidate();
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            }
+        }.execute();
+    }
+    
+    
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new RaceResultGUI(new HorseBettingGUI());
+        });
+    }
+}
